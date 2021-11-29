@@ -14,6 +14,7 @@ import time
 
 from datetime import datetime, timedelta
 from pylink import link_from_url
+from math import floor
 
 from .logger import LOGGER
 from .pakbus import PakBus
@@ -106,8 +107,12 @@ class CR1000(object):
         self.ping_node()
         diff = dtime - current_time
         diff = diff.total_seconds()
+        # convert decimal seconds into NSec type (seconds, nanoseconds)
+        # "NSec 14 8 Two four-byte integers, nanosecond time resolution 
+        # (MSB first) "
+        diff_NSec = [int(floor(diff)),  int( (diff - floor(diff))*1e9)]
         # settime (OldTime in response)
-        hdr, msg, sdt1 = self.send_wait(self.pakbus.get_clock_cmd((diff, 0)))
+        hdr, msg, sdt1 = self.send_wait(self.pakbus.get_clock_cmd(diff_NSec))
         # gettime (NewTime in response)
         hdr, msg, sdt2 = self.send_wait(self.pakbus.get_clock_cmd())
         # remove transmission time
