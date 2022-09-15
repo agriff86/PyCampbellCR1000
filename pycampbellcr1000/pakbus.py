@@ -804,11 +804,27 @@ class PakBus(object):
                         # default: generate list of all fields in table
                         fields = t_frag['Fields']
                         fields = range(1, len(fields) + 1)
-
                     for field in fields:
                         fieldname = t_frag['Fields'][field - 1]['FieldName']
                         fieldtype = t_frag['Fields'][field - 1]['FieldType']
                         dimension = t_frag['Fields'][field - 1]['Dimension']
+                        subdim = t_frag['Fields'][field - 1]['SubDim']
+                        if len(subdim) > 0:
+                            # TODO: handle multidimensional arrays
+                            assert(len(subdim) == 1)
+                            begidx = t_frag['Fields'][field - 1]['BegIdx']
+                            # special handling for subdimension-type fields
+                            # that is, things which are created in CRBasic with 
+                            # a declaration like:
+                            # DataTable(MyTable,true,-1)
+                            #       [...other stuff...]
+                            #    Average (1, MyVar(1),   FP2, 0)
+                            #    Average (1, MyVar(2),   FP2, 0)
+                            # EndTable
+                            # Campbell's utilities generate field names like:
+                            #   "MyVar(1)", "MyVar(2)"
+                            # so we shall try to do something similar
+                            fieldname = fieldname + ("(" + str(begidx) + ")").encode('ascii')
                         if fieldtype == 'ASCII':
                             values, size = self.decode_bin([fieldtype],
                                                            raw[offset:],
