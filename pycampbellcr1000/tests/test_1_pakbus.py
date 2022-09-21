@@ -122,10 +122,17 @@ def test_get_setvalues_cmd():
     cmd = bytes_to_hex(pakbus.get_setvalues_cmd('Public','FP4','MyVar(4)',4, [1.0, 2.0, 3.0, 4.0])[0])
     assert cmd == "" # TODO: currently FP4 is not supported
 
+def test_get_filedownload_cmd():
+    pakbus = PakBus(FakeLink())
+    cmd = bytes_to_hex(pakbus.get_filedownload_cmd("Filename", b"\x12\x34")[0])
+    assert cmd == 'A0 01 98 02 10 01 08 02 1C 06 00 00 46 69 6C 65 6E 61 6D 65 00 00 00 00 00 ' \
+                  '00 12 34'
+
+
 def test_get_fileupload_cmd():
     pakbus = PakBus(FakeLink())
     cmd = bytes_to_hex(pakbus.get_fileupload_cmd('Filename')[0])
-    assert cmd == 'A0 01 98 02 10 01 08 02 1D 06 00 00 46 69 6C 65 6E 61 6D'\
+    assert cmd == 'A0 01 98 02 10 01 08 02 1D 07 00 00 46 69 6C 65 6E 61 6D'\
                   ' 65 00 01 00 00 00 00 02 00'
 
 
