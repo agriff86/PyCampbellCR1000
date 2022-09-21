@@ -73,6 +73,12 @@ class PakBus(object):
         'SecNano': {'code': 23, 'fmt': '<2l', 'size': 8},
     }
 
+    # a mapping back from codes to names
+    # >>> print(DATATYPE_NAME[1]) # prints "Byte"
+    DATATYPE_NAME = {}
+    for k,v in DATATYPE.items():
+        DATATYPE_NAME[v['code']] = k
+
     # link state
     RING = 0x9
     READY = 0xA
@@ -378,6 +384,11 @@ class PakBus(object):
             msg = self.unpack_fileupload_response(msg)
         elif hdr['HiProtoCode'] == 1 and msg['MsgType'] == 0xa1:
             msg = self.unpack_pleasewait_response(msg)
+        elif hdr['HiProtoCode'] == 1 and msg['MsgType'] == 0x9a:
+            msg = self.unpack_getvalues_response(msg)
+        elif hdr['HiProtoCode'] == 1 and msg['MsgType'] == 0x9b:
+            msg = self.unpack_setvalues_response(msg)
+        
         else:
             LOGGER.error('No implementation for <(%r, %r)> packet type'
                          % (hdr['HiProtoCode'], msg['MsgType']))
@@ -593,6 +604,84 @@ class PakBus(object):
         values, size = self.decode_bin(['Byte', 'UInt2'], msg['raw'][2:])
         msg['CmdMsgType'], msg['WaitSec'] = values
         return msg
+
+    def get_getvalues_cmd(self, table_name, field_type, field_name, swath):
+        '''Create Set Values command packet
+
+        :param table_name: Table name as string
+        :param field_type: Type code as string ('Byte', 'UInt2', etc.)
+        :param field_name: Field name (i.e. variable name) as string
+        :param swath: Number of values to get as int
+        
+        '''
+        transac_id = self.transaction.next_id()
+        # this needs to be saved for the "unpack" operation
+        type_code = self.DATATYPE[field_type]['code']
+        self._getvalues_params = transac_id, table_name, type_code, field_name, swath
+        msg_type_code = 0x1a
+        # BMP5 Application Packet
+        hdr = self.pack_header(0x1)
+        message_types = ['Byte', 'Byte', 'UInt2', 'ASCIIZ', 'Byte', 'ASCIIZ', 'UInt2']
+        message_values = [msg_type_code, transac_id, self.security_code, table_name, type_code,
+                  field_name, swath]
+        msg = self.encode_bin(message_types, message_values)
+        return b''.join((hdr, msg)), transac_id
+
+    def get_setvalues_cmd(self, table_name, field_type, field_name, swath, values):
+        '''Create Set Values command packet
+
+        :param table_name: Table name as string
+        :param field_type: Type code as string ('Byte', 'UInt2', etc.)
+        :param field_name: Field name (i.e. variable name) as string
+        :param swath: Number of values to get as int
+        :param values: Values to set, as list
+        '''
+        transac_id = self.transaction.next_id()
+        type_code = self.DATATYPE[field_type]['code']
+        msg_type_code = 0x1b
+        # BMP5 Application Packet
+        hdr = self.pack_header(0x1)
+        message_types = ['Byte', 'Byte', 'UInt2', 'ASCIIZ', 'Byte', 'ASCIIZ', 'UInt2']
+        message_values = [msg_type_code, transac_id, self.security_code, table_name, type_code,
+                  field_name, swath]
+        msg = self.encode_bin(message_types, message_values)
+        value_type = self.DATATYPE_NAME[type_code]
+        encoded_values = self.encode_bin([value_type]*swath,values)
+        
+        return b''.join((hdr, msg, encoded_values)), transac_id
+    
+    def unpack_getvalues_response(self, msg):
+        '''Unpack Get Values Response packet.'''
+        transac_id, _table_name, type_code, _field_name, swath = self._getvalues_params
+        assert transac_id == msg['TranNbr']
+
+        msg['RespCode'] = self.decode_bin(['Byte'], msg['raw'][2:3])[0][0]
+        RESPONSE = {
+            0x00: "Complete",
+            0x01: "Permission denied",
+            0x10: "Invalid table or field",
+            0x11: "Data type conversion not supported",
+            0x12: "Memory bounds voilation",
+        }
+        msg['RespStr'] = RESPONSE[msg['RespCode']]
+        if msg['RespCode'] == 0x00:
+            type_name = self.DATATYPE_NAME[type_code]
+            msg['Values'] = self.decode_bin([type_name]*swath, msg['raw'][3:])[0]
+        return msg
+    
+    def unpack_setvalues_response(self, msg):
+        '''Unpack Set Values response packet'''
+        msg['RespCode'] = self.decode_bin(['Byte'], msg['raw'][2:3])[0][0]
+        RESPONSE = {
+            0x00: "Complete",
+            0x01: "Permission denied",
+            0x10: "Invalid table or field",
+            0x11: "Data type conversion not supported",
+            0x12: "Memory bounds voilation",
+        }
+        msg['RespStr'] = RESPONSE[msg['RespCode']]
+        return msg
+
 
     def get_bye_cmd(self):
         '''Create Bye Command packet.'''

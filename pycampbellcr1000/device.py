@@ -295,6 +295,75 @@ class CR1000(object):
         if data:
             data['CompTime'] = nsec_to_time(data['CompTime'])
         return data
+    
+    def __lookup_field_info(self, table_name, field_name):
+        # if the field name has dimension info (e.g. MyVar(4) ) then
+        # strip this from the field name
+        if "(" in field_name and ")" in field_name and (field_name.index(")") > field_name.index("(")):
+                field_name = field_name[:field_name.index("(")]
+        for table_info in self.table_def:
+            table_name = str(table_info['Header']['TableName'], 'ascii')
+            if not table_name == table_name:
+                continue
+            for field_info in table_info['Fields']:
+                if str(field_info['FieldName'], 'ascii') == field_name:
+                    return field_info
+        return None
+
+
+    def get_values(self, tablename, fieldname, swath=1):
+        '''Get values from datalogger
+
+        :param tablename: Table name, as str
+        :param fieldname: Field name, as str.  
+            Optionally includes dimension information, e.g. MyVar(2)
+        :param swath: Number of data points, default 1.  
+            Requires field to to be non-scalar.
+        
+        Returns values as a scalar (swath=1) or as a list (swath > 1).  On
+        error, returns None
+        '''
+        self.ping_node()
+        # lookup the data type for this data
+        fieldtype = self.__lookup_field_info(tablename, fieldname)['FieldType']
+        cmd = self.pakbus.get_getvalues_cmd(tablename, fieldtype, fieldname, swath)
+        hdr, msg, send_time = self.send_wait(cmd)
+        if not 'Values' in msg:
+            LOGGER.error("Get Values error: %s" % msg['RespStr'])
+            # TODO: raise exception?
+            return None
+        
+        values = msg['Values']
+        if len(values) == 1:
+            values = values[0]
+        
+        return values
+
+    def set_values(self, tablename, fieldname, values):
+        '''Set values from datalogger
+
+        :param tablename: Table name, as str
+        :param fieldname: Field name, as str.  
+            Optionally includes dimension information, e.g. MyVar(2)
+        :param values: List of values to set, or single item
+        
+        Returns True on success, False on failure
+        '''
+
+        # handle scalar values by promoting to a length-1 list
+        if isinstance(values, str) or (not hasattr(values, '__len__')):
+            values = [values]
+        self.ping_node()
+        # lookup the data type for this data
+        fieldtype = self.__lookup_field_info(tablename, fieldname)['FieldType']
+        swath = len(values)
+        cmd = self.pakbus.get_setvalues_cmd(tablename, fieldtype, fieldname, swath, values)
+        hdr, msg, send_time = self.send_wait(cmd)
+        if not msg['RespCode'] == 0x00:
+            LOGGER.error("Get Values error: %s" % msg['RespStr'])
+            # TODO: raise exception?
+            return False
+        return True
 
     def bye(self):
         '''Send a bye command.'''
