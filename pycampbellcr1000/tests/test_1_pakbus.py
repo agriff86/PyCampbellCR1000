@@ -105,6 +105,22 @@ def test_get_getprogstat_cmd():
     cmd = bytes_to_hex(pakbus.get_getprogstat_cmd()[0])
     assert cmd == 'A0 01 98 02 10 01 08 02 18 05 00 00'
 
+def test_get_getvalues_cmd():
+    pakbus = PakBus(FakeLink())
+    cmd = bytes_to_hex(pakbus.get_getvalues_cmd('Public','FP4','MyVar',1)[0])
+    assert cmd == 'A0 01 98 02 10 01 08 02 1A 01 00 00 50 75 62 6C 69 63 00 08'\
+                  ' 4D 79 56 61 72 00 00 01'
+
+def test_get_setvalues_cmd():
+    pakbus = PakBus(FakeLink())
+    cmd = bytes_to_hex(pakbus.get_setvalues_cmd('Public','IEEE4L','MyVar(4)',4, [1.0, 2.0, 3.0, 4.0])[0])
+    assert cmd == 'A0 01 98 02 10 01 08 02 1B 02 00 00 50 75 62 6C 69 63 00 18 4D'\
+                '79 56 61 72 28 34 29 00 00 04 00 00 80 3F 00 00 00 40 00 00 40'\
+                '40 00 00 80 40'
+    
+    pakbus = PakBus(FakeLink())
+    cmd = bytes_to_hex(pakbus.get_setvalues_cmd('Public','FP4','MyVar(4)',4, [1.0, 2.0, 3.0, 4.0])[0])
+    assert cmd == "" # TODO: currently FP4 is not supported
 
 def test_get_fileupload_cmd():
     pakbus = PakBus(FakeLink())
