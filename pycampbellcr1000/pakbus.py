@@ -195,6 +195,9 @@ class PakBus(object):
         # This should be the packet we are waiting for
         if msg['TranNbr'] == transac_id:
             return hdr, msg
+        
+        # Wrong packet, keep waiting
+        return self.wait_packet(transac_id)
 
     def pack_header(self, hi_proto, exp_more=0x2, link_state=None,
                     hops=0x0):
