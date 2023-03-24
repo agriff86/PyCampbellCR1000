@@ -359,6 +359,10 @@ class PakBus(object):
         # decode default message fields:
         # raw message, message type and transaction number
         msg['raw'] = data[8:]
+        if len(msg['raw']) == 0:
+            # received a header with empty body
+            return hdr, msg
+        
         values, size = self.decode_bin(('Byte', 'Byte'), msg['raw'][:2])
         msg['MsgType'], msg['TranNbr'] = values
         LOGGER.info('HiProtoCode, MsgType = <%x, %x>' %
