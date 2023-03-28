@@ -172,19 +172,23 @@ class PakBus(object):
             # read timeout or signature validation failure
             return {}, {}
 
-        # ignore packets that are not for us
+        hdr, msg = self.decode_packet(data)
 
+        if hdr == {}:
+            # failure to decode packet header
+            return {}, {}
+        
+        # ignore packets that are not for us
         LOGGER.info('src, SrcNodeId = <%x, %x>' %
                     (self.src, hdr['SrcNodeId']))
         LOGGER.info('dest, DstNodeId = <%x, %x>' %
                     (self.dest, hdr['DstNodeId']))
 
         if (hdr['DstNodeId'] != self.src):
-            return {}, {}
-
-        hdr, msg = self.decode_packet(data)
-        if hdr == {} or msg == {}:
-            # failure to decode packet
+            return self.wait_packet(transac_id)
+        
+        if msg == {}:
+            # empty message body
             return hdr, msg
         
         # Handle 'please wait' packets
