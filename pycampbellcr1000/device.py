@@ -41,7 +41,7 @@ class CR1000(object):
         link.open()
         LOGGER.info("init client")
         self.pakbus = PakBus(link, dest_addr, dest, src_addr, src, security_code)
-        self.pakbus.wait_packet()
+        self.pakbus.read()
         # try ping the datalogger
         for i in xrange(20):
             LOGGER.info('%d'%(i))
@@ -54,6 +54,9 @@ class CR1000(object):
                 self.pakbus.link.open()
         if not self.connected:
             raise NoDeviceException()
+        # how many times to automatically retry communications
+        # at the packet level
+        self.max_retries = 10
 
     @classmethod
     def from_url(cls, url, timeout=10, dest_addr=None, dest=0x001,
@@ -72,7 +75,7 @@ class CR1000(object):
         link.settimeout(timeout)
         return cls(link, dest_addr, dest, src_addr, src, security_code)     #EGC Add security code to the constructor call
 
-    def send_wait(self, cmd):
+    def send_wait(self, cmd, retries=0):
         '''Send command and wait for response packet.'''
         packet, transac_id = cmd
         begin = time.time()
@@ -80,13 +83,19 @@ class CR1000(object):
         # wait response packet
         response = self.pakbus.wait_packet(transac_id)
         end = time.time()
+        if response[0] == {} and response[1] == {}:
+            # wait_packet returns {},{} after a timeout
+            if retries > 0:
+                newcmd = self.pakbus.get_retry_cmd(cmd)
+                return self.send_wait(newcmd, retries=retries-1)
+
         send_time = timedelta(seconds=(end - begin) / 2)
         return response[0], response[1], send_time
 
     def ping_node(self):
         '''Check if remote host is available.'''
         # send hello command and wait for response packet
-        hdr, msg, send_time = self.send_wait(self.pakbus.get_hello_cmd())
+        hdr, msg, send_time = self.send_wait(self.pakbus.get_hello_cmd(), retries=self.max_retries)
         if not (hdr and msg):
             raise NoDeviceException()
         return True
@@ -125,7 +134,7 @@ class CR1000(object):
         LOGGER.info('Try get settings')
         self.ping_node()
         # send getsettings command and wait for response packet
-        hdr, msg, send_time = self.send_wait(self.pakbus.get_getsettings_cmd())
+        hdr, msg, send_time = self.send_wait(self.pakbus.get_getsettings_cmd(), retries=self.max_retries)
         # remove transmission time
         settings = ListDict()
         for item in msg["Settings"]:
@@ -147,7 +156,7 @@ class CR1000(object):
                                                  closeflag=0x00,
                                                  transac_id=transac_id)
             transac_id = cmd[1]
-            hdr, msg, send_time = self.send_wait(cmd)
+            hdr, msg, send_time = self.send_wait(cmd, retries=self.max_retries)
             try:
                 if msg['RespCode'] == 1:
                     raise ValueError("Permission denied")
@@ -180,7 +189,10 @@ class CR1000(object):
                                                    offset=offset,
                                                    close_flag=close_flag,
                                                    transac_id=transac_id)
-            hdr, msg, send_time = self.send_wait(cmd)
+            for _retries in range(10):
+                hdr, msg, send_time = self.send_wait(cmd)
+                if not (msg == {} and hdr == {}):
+                    break
             try:
                 if msg['RespCode'] == 1:
                     raise ValueError("Permission denied")
@@ -200,7 +212,7 @@ class CR1000(object):
         # cmd 1 is: Compile and run the file specified by fileName1
         #           and mark it as run on power up.
         cmd = self.pakbus.get_filecontrol_cmd(filename, 1)
-        hdr, msg, send_time = self.send_wait(cmd)
+        hdr, msg, send_time = self.send_wait(cmd, retries=self.max_retries)
         # remove transmission time
         try:
             if msg['RespCode'] == 1:
@@ -263,7 +275,7 @@ class CR1000(object):
         # Send collect data request
         cmd = self.pakbus.get_collectdata_cmd(tablenbr, tabledefsig, mode,
                                               p1, p2)
-        hdr, msg, send_time = self.send_wait(cmd)
+        hdr, msg, send_time = self.send_wait(cmd, retries=self.max_retries)
         more = True
         data, more = self.pakbus.parse_collectdata(msg['RecData'], tabledef)
         # Return parsed record data and flag if more records exist

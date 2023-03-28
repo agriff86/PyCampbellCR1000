@@ -169,11 +169,8 @@ class PakBus(object):
         LOGGER.info('Wait packet with transaction %s' % transac_id)
         data = self.read()
         if data is None or data == b'':
+            # read timeout or signature validation failure
             return {}, {}
-
-        hdr, msg = self.decode_packet(data)
-        if hdr == {} or msg == {}:
-            return hdr, msg
 
         # ignore packets that are not for us
 
@@ -185,6 +182,11 @@ class PakBus(object):
         if (hdr['DstNodeId'] != self.src):
             return {}, {}
 
+        hdr, msg = self.decode_packet(data)
+        if hdr == {} or msg == {}:
+            # failure to decode packet
+            return hdr, msg
+        
         # Handle 'please wait' packets
         if msg['TranNbr'] == transac_id and msg['MsgType'] == 0xa1:
             timewait = msg['WaitSec']
@@ -197,7 +199,7 @@ class PakBus(object):
             raise DeliveryFailureException()
 
         # This should be the packet we are waiting for
-        if msg['TranNbr'] == transac_id:
+        if transac_id is None or msg['TranNbr'] == transac_id:
             return hdr, msg
         
         # Wrong packet, keep waiting
@@ -433,6 +435,19 @@ class PakBus(object):
         '''Unpack Failure Response packet.'''
         (msg['ErrCode'],), size = self.decode_bin(['Byte'], msg['raw'][2:])
         return msg
+
+    def get_retry_cmd(self, cmd):
+        '''
+        Get a new version of cmd, identical except with a new transaction id,
+        which can be used to retry the command after a timeout
+        '''
+        packet, _old_transac_id = cmd
+        transac_id = self.transaction.next_id()
+        transac_id_byte = self.encode_bin(['Byte'], [transac_id])
+        # transac_id is stored in packet[9]
+        idx = 9
+        new_packet = packet[:idx] + transac_id_byte + packet[idx+1:]
+        return new_packet, transac_id
 
     def get_getsettings_cmd(self):
         '''Create Getsettings Command packet.'''

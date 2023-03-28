@@ -40,6 +40,46 @@ def test_pack_header():
     header = bytes_to_hex(pakbus.pack_header(0x0, 0x0, pakbus.FINISHED))
     assert header == 'B0 01 18 02 00 01 08 02'
 
+def test_get_retry_command():
+    pakbus = PakBus(FakeLink())
+
+    tablenbr = 2
+    tabledefsig = 40615
+    mode = 0x07
+    p1 = (712142640, 0)
+    p2 = (712142644, 0)
+
+    cmd_funcs = [   #pakbus.get_bye_cmd,  # doesn't contain transaction id
+                    pakbus.get_clock_cmd,
+                    lambda: pakbus.get_collectdata_cmd(tablenbr, tabledefsig, mode, p1, p2),
+                    # pakbus.get_filecontrol_cmd,
+                    # pakbus.get_filedownload_cmd,
+                    # pakbus.get_fileupload_cmd,
+                    # pakbus.get_getprogstat_cmd,
+                    pakbus.get_getsettings_cmd,
+                    # pakbus.get_getvalues_cmd,
+                    pakbus.get_hello_cmd,
+                    # pakbus.get_setvalues_cmd
+                    ]
+    for func in cmd_funcs:
+        print(func.__name__)
+        cmd = func()
+        cmd_bytes, transac_id1 = cmd
+        current_id = pakbus.transaction.id
+        cmd_retry = pakbus.get_retry_cmd(cmd)
+        cmd_retry_bytes, transac_id2 = cmd_retry
+        pakbus.transaction.id = current_id
+        cmd_repeated = func()
+        cmd_repeated_bytes, transac_id3 = cmd_repeated
+        print(func.__name__, transac_id1, transac_id2, transac_id3)
+        print('original:', bytes_to_hex(cmd_bytes))
+        print('retry:   ',bytes_to_hex(cmd_retry_bytes))
+        print('repeated:',bytes_to_hex(cmd_repeated_bytes))
+        assert cmd_bytes != cmd_retry_bytes
+        assert cmd_retry_bytes == cmd_repeated_bytes
+
+test_get_retry_command()
+
 
 def test_compute_signature():
     pakbus = PakBus(FakeLink())
