@@ -38,6 +38,9 @@ class CR1000(object):
 
     def __init__(self, link, dest_addr=None, dest=0x001, src_addr=None,
                  src=0x802, security_code=0x0000):
+        # how many times to automatically retry communications
+        # at the packet level
+        self.max_retries = 10
         link.open()
         LOGGER.info("init client")
         self.pakbus = PakBus(link, dest_addr, dest, src_addr, src, security_code)
@@ -54,9 +57,6 @@ class CR1000(object):
                 self.pakbus.link.open()
         if not self.connected:
             raise NoDeviceException()
-        # how many times to automatically retry communications
-        # at the packet level
-        self.max_retries = 10
 
     @classmethod
     def from_url(cls, url, timeout=10, dest_addr=None, dest=0x001,
