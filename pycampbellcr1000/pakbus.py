@@ -15,6 +15,7 @@ from __future__ import division, unicode_literals
 
 import struct
 import time
+import threading
 
 from .compat import ord, chr, is_text, is_py3, bytes
 from .logger import LOGGER
@@ -25,11 +26,14 @@ from .utils import bytes_to_hex, nsec_to_time
 
 class Transaction(Singleton):
     id = 0
+    _lock = threading.RLock()
 
     def next_id(self):
-        self.id += 1
-        self.id &= 0xFF
-        return self.id
+        with self._lock:
+            self.id += 1
+            self.id &= 0xFF
+            transac_id = self.id
+        return transac_id
 
 
 class PakBus(object):
