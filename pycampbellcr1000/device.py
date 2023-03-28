@@ -80,7 +80,7 @@ class CR1000(object):
         # wait response packet
         response = self.pakbus.wait_packet(transac_id)
         end = time.time()
-        send_time = timedelta(seconds=int((end - begin) / 2))
+        send_time = timedelta(seconds=(end - begin) / 2)
         return response[0], response[1], send_time
 
     def ping_node(self):
