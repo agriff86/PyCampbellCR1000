@@ -16,6 +16,7 @@ from __future__ import division, unicode_literals
 import struct
 import time
 import threading
+import statistics
 
 from .compat import ord, chr, is_text, is_py3, bytes
 from .logger import LOGGER
@@ -34,6 +35,51 @@ class Transaction(Singleton):
             self.id &= 0xFF
             transac_id = self.id
         return transac_id
+
+class PbStats():
+    """Records statistics about pakbus packet transmission/reception"""
+    max_samples = 1_000_000
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def append_time_sample(self, t):
+        self._times.append(t)
+        self._times = self._times[:self.max_samples]
+    
+    def summary(self):
+        summary_txt = ("PakBus Packets: Sent = %i, Received = %i, Timed Out = %i,"
+                       " Malformed = %i.  Time: median = %.3gsec,"
+                       " 90th percentile = %.3fsec." % (self.num_packets, 
+                                                  self.num_received, 
+                                                  self.num_timed_out, 
+                                                  self.num_malformed, 
+                                                  self.median_time, 
+                                                  self.p90_time))
+        return summary_txt
+    
+    @property
+    def median_time(self):
+        if len(self._times) > 0:
+            return statistics.median(self._times)
+        else:
+            return float('NaN')
+    
+    @property
+    def p90_time(self):
+        if len(self._times) > 10:
+            sorted_times = sorted(self._times)
+            idx = len(sorted_times) * 9 // 10
+            return sorted_times[idx]
+        else:
+            return float('NaN')
+
+    def reset(self):
+        self.num_packets = 0
+        self.num_received = 0
+        self.num_timed_out = 0
+        self.num_malformed = 0
+        self._times = []
 
 
 class PakBus(object):
@@ -92,6 +138,7 @@ class PakBus(object):
                  src_addr=None, src=0x802, security_code=0x0000):
         self.link = link
         self.src = src
+        self.stats = PbStats()
         if (src_addr != None):
             self.src_addr = src_addr
         else:
@@ -118,6 +165,7 @@ class PakBus(object):
         packet = b''.join((b'\xBD', frame, b'\xBD'))
         LOGGER.info('Write: %s' % bytes_to_hex(packet))
         self.link.write(packet)
+        self.stats.num_packets += 1
 
     def read(self):
         '''Receive packet over PakBus.'''
@@ -128,6 +176,7 @@ class PakBus(object):
             if (byte != None):
                 LOGGER.info('Read byte: %s' % bytes_to_hex(byte))
             if time.time() - begin > self.link.timeout:
+                self.stats.num_timed_out += 1
                 return None
             # Read until first \xBD frame character
             byte = self._read_one_byte()
@@ -147,6 +196,7 @@ class PakBus(object):
         # Calculate signature (should be zero)
         if self.compute_signature(packet):
             LOGGER.error('Check signature : Error')
+            self.stats.num_malformed += 1
             return None
         else:
             LOGGER.info('Check signature : OK')
@@ -204,6 +254,7 @@ class PakBus(object):
 
         # This should be the packet we are waiting for
         if transac_id is None or msg['TranNbr'] == transac_id:
+            self.stats.num_received += 1
             return hdr, msg
         
         # Wrong packet, keep waiting

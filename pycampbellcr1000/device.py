@@ -90,6 +90,7 @@ class CR1000(object):
                 return self.send_wait(newcmd, retries=retries-1)
 
         send_time = timedelta(seconds=(end - begin) / 2)
+        self.pakbus.stats.append_time_sample(end-begin)
         return response[0], response[1], send_time
 
     def ping_node(self):
